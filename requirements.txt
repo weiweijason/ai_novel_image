@@ -1,0 +1,23 @@
+# Image Worker 依賴套件
+# 硬體需求: RTX 5090 32GB VRAM
+
+# 基礎套件
+requests>=2.31.0
+minio>=7.2.0
+
+# PyTorch (CUDA 12.4)
+torch>=2.1.0
+torchvision>=0.16.0
+
+# Stable Diffusion / ComfyUI
+diffusers>=0.24.0
+transformers>=4.35.0
+accelerate>=0.24.0
+safetensors>=0.4.0
+
+# 影像處理
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# ComfyUI (可選，如果直接整合)
+# comfyui>=0.3.0
