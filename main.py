@@ -60,11 +60,14 @@ MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "4"))
 
 # === MinIO 客戶端 ===
 def get_minio_client() -> Minio:
+    endpoint = S3_ENDPOINT.replace("http://", "").replace("https://", "")
+    secure = S3_ENDPOINT.startswith("https")
+    
     return Minio(
-        S3_ENDPOINT.replace("http://", "").replace("https://", ""),
+        endpoint,
         access_key=S3_ACCESS_KEY,
         secret_key=S3_SECRET_KEY,
-        secure=S3_ENDPOINT.startswith("https"),
+        secure=secure,
     )
 
 
@@ -163,6 +166,38 @@ def upload_to_minio(image_bytes: bytes, object_name: str, content_type: str = "i
         content_type=content_type,
     )
     return f"{S3_ENDPOINT}/{S3_BUCKET}/{object_name}"
+
+
+# === ComfyUI 健康檢查 ===
+def wait_for_comfyui(timeout_seconds: int = 300) -> bool:
+    """等待 ComfyUI 就緒"""
+    logger.info(f"Waiting for ComfyUI at {COMFYUI_API_URL}...")
+    start_time = time.time()
+    
+    while time.time() - start_time < timeout_seconds:
+        try:
+            response = requests.get(f"{COMFYUI_API_URL}/system_stats", timeout=5)
+            if response.status_code == 200:
+                logger.info("ComfyUI is ready!")
+                return True
+        except Exception:
+            pass
+        
+        elapsed = int(time.time() - start_time)
+        logger.info(f"  Waiting for ComfyUI... ({elapsed}s / {timeout_seconds}s)")
+        time.sleep(5)
+    
+    logger.error(f"ComfyUI did not become ready within {timeout_seconds}s")
+    return False
+
+
+def check_comfyui_connection() -> bool:
+    """檢查 ComfyUI 是否可連線"""
+    try:
+        response = requests.get(f"{COMFYUI_API_URL}/system_stats", timeout=5)
+        return response.status_code == 200
+    except Exception:
+        return False
 
 
 # === ComfyUI API 整合 ===
@@ -491,6 +526,11 @@ def main() -> None:
     logger.info(f"  S3 Endpoint: {S3_ENDPOINT}")
     logger.info(f"  SD Model: {SD_MODEL_NAME}")
     logger.info(f"  Capabilities: {WORKER_CAPABILITIES}")
+    
+    # 等待 ComfyUI 就緒
+    if not wait_for_comfyui(timeout_seconds=300):
+        logger.error("ComfyUI is not available. Image Worker cannot start.")
+        sys.exit(1)
     
     # 註冊 Worker
     register_worker()

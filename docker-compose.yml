@@ -1,14 +1,36 @@
-# Image Worker - 獨立部署
+# Image Worker + ComfyUI - 獨立部署
 # 硬體需求: RTX 5090 32GB VRAM
 # 放置位置: 擁有 RTX 5090 的電腦
 
 services:
+  # ComfyUI 服務 - 自帶的 Stable Diffusion 推理引擎
+  comfyui:
+    image: ghcr.io/ai-dock/comfyui:latest
+    container_name: anime-comfyui
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      COMFYUI_ARGS: "--listen 0.0.0.0 --port 8188"
+      AUTO_UPDATE: "1"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./comfyui/data:/home/ai-dock/comfyui
+      - ./models/sd:/home/ai-dock/comfyui/models/checkpoints
+
   worker-image:
     build:
       context: .
     container_name: anime-worker-image
     restart: unless-stopped
     network_mode: host
+    depends_on:
+      - comfyui
     environment:
       API_BASE_URL: ${API_BASE_URL}
       WORKER_ID: ${WORKER_ID:-image-01}
