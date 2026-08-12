@@ -9,6 +9,9 @@ services:
     container_name: anime-comfyui
     restart: unless-stopped
     network_mode: host
+    environment:
+      - PORT=8188
+      - HOST=0.0.0.0
     deploy:
       resources:
         reservations:
@@ -19,9 +22,6 @@ services:
     volumes:
       - ./comfyui/data:/data
       - ./models/sd:/data/models/checkpoints
-    command: >
-      --listen 0.0.0.0
-      --port 8188
 
   worker-image:
     build:
