@@ -5,13 +5,10 @@
 services:
   # ComfyUI 服務 - 自帶的 Stable Diffusion 推理引擎
   comfyui:
-    image: ghcr.io/ai-dock/comfyui:latest
+    image: saladtechnologies/comfyui:comfy0.3.61-api1.9.2-torch2.8.0-cuda12.8-dreamshaper8
     container_name: anime-comfyui
     restart: unless-stopped
     network_mode: host
-    environment:
-      COMFYUI_ARGS: "--listen 0.0.0.0 --port 8188"
-      AUTO_UPDATE: "1"
     deploy:
       resources:
         reservations:
@@ -20,8 +17,11 @@ services:
               count: 1
               capabilities: [gpu]
     volumes:
-      - ./comfyui/data:/home/ai-dock/comfyui
-      - ./models/sd:/home/ai-dock/comfyui/models/checkpoints
+      - ./comfyui/data:/data
+      - ./models/sd:/data/models/checkpoints
+    command: >
+      --listen 0.0.0.0
+      --port 8188
 
   worker-image:
     build:
