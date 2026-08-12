@@ -5,13 +5,26 @@ Image Worker - ComfyUI 影像生成 Worker
 """
 
 import io
+import logging
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from typing import Any
 
 import requests
 from minio import Minio
+
+
+# === 日誌設定 ===
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("image-worker")
 
 
 # === 環境變數 ===
@@ -33,10 +46,12 @@ S3_BUCKET = os.getenv("S3_BUCKET", "assets")
 
 # ComfyUI 設定
 COMFYUI_API_URL = os.getenv("COMFYUI_API_URL", "http://localhost:8188")
+SD_MODEL_PATH = os.getenv("SD_MODEL_PATH", "/models/sd/kohaku-v4.1.safetensors")
+SD_MODEL_NAME = os.path.basename(SD_MODEL_PATH)  # kohaku-v4.1.safetensors
 
 # 影像生成參數
-IMAGE_WIDTH = int(os.getenv("IMAGE_WIDTH", "512"))
-IMAGE_HEIGHT = int(os.getenv("IMAGE_HEIGHT", "768"))
+IMAGE_WIDTH = int(os.getenv("IMAGE_WIDTH", "1024"))
+IMAGE_HEIGHT = int(os.getenv("IMAGE_HEIGHT", "1024"))
 CFG_SCALE = float(os.getenv("CFG_SCALE", "7.5"))
 NUM_INFERENCE_STEPS = int(os.getenv("NUM_INFERENCE_STEPS", "30"))
 SAMPLER = os.getenv("SAMPLER", "euler_ancestral")
@@ -70,12 +85,12 @@ def register_worker() -> None:
         "worker_type": WORKER_TYPE,
         "hostname": WORKER_HOSTNAME,
         "capabilities": WORKER_CAPABILITIES,
-        "models": ["stable-diffusion-xl-anime", "controlnet-pose"],
+        "models": [SD_MODEL_NAME],
     }
-    print(f"[{datetime.now(timezone.utc).isoformat()}] Registering worker: {WORKER_ID}")
+    logger.info(f"Registering worker: {WORKER_ID}")
     response = requests.post(f"{API_BASE_URL}/worker/register", json=payload, timeout=10)
     response.raise_for_status()
-    print(f"[{datetime.now(timezone.utc).isoformat()}] Worker registered successfully")
+    logger.info("Worker registered successfully")
 
 
 def send_heartbeat(status: str, current_job: str | None = None) -> None:
@@ -220,7 +235,7 @@ def build_comfyui_workflow(
         },
         "4": {
             "class_type": "CheckpointLoaderSimple",
-            "inputs": {"ckpt_name": "anime_model.safetensors"}
+            "inputs": {"ckpt_name": SD_MODEL_NAME}
         },
         "5": {
             "class_type": "EmptyLatentImage",
@@ -275,7 +290,7 @@ def generate_character_image(user_input: dict[str, Any]) -> dict[str, Any]:
     width = user_input.get("width", IMAGE_WIDTH)
     height = user_input.get("height", IMAGE_HEIGHT)
     
-    print(f"[{datetime.now(timezone.utc).isoformat()}] Generating character image: {character_name}")
+    logger.info(f"Generating character image: {character_name}")
     
     # 建立 prompt
     prompt = f"masterpiece, best quality, {style} style character portrait, {character_desc}, full body, detailed background"
@@ -286,14 +301,14 @@ def generate_character_image(user_input: dict[str, Any]) -> dict[str, Any]:
         workflow = build_comfyui_workflow(prompt, negative_prompt, width, height)
         
         # 2. 提交到 ComfyUI
-        print(f"  Submitting workflow to ComfyUI: {COMFYUI_API_URL}")
+        logger.info(f"  Submitting workflow to ComfyUI: {COMFYUI_API_URL}")
         prompt_id = submit_comfyui_workflow(workflow)
-        print(f"  Prompt ID: {prompt_id}")
+        logger.info(f"  Prompt ID: {prompt_id}")
         
         # 3. 等待完成
-        print("  Waiting for generation...")
+        logger.info("  Waiting for generation...")
         history = wait_comfyui_result(prompt_id)
-        print(f"  Generation complete: {history}")
+        logger.info("  Generation complete")
         
         # 4. 下載影像
         outputs = history.get("outputs", {})
@@ -305,8 +320,8 @@ def generate_character_image(user_input: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("No image output found in ComfyUI result")
         
     except Exception as e:
-        print(f"  ComfyUI error: {e}")
-        print("  Falling back to Mock generation...")
+        logger.error(f"  ComfyUI error: {e}")
+        logger.warning("  Falling back to Mock generation...")
         # Fallback: Mock 生成
         image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 1000
     
@@ -350,19 +365,19 @@ def generate_scene_image(user_input: dict[str, Any]) -> dict[str, Any]:
     width = user_input.get("width", 1920)
     height = user_input.get("height", 1080)
     
-    print(f"[{datetime.now(timezone.utc).isoformat()}] Generating scene image")
+    logger.info(f"Generating scene image")
     
     prompt = f"masterpiece, best quality, {style} style, {scene_desc}, detailed background, cinematic lighting"
     negative_prompt = "low quality, blurry, bad anatomy, extra limbs, worst quality"
     
     try:
         workflow = build_comfyui_workflow(prompt, negative_prompt, width, height)
-        print(f"  Submitting workflow to ComfyUI: {COMFYUI_API_URL}")
+        logger.info(f"  Submitting workflow to ComfyUI: {COMFYUI_API_URL}")
         prompt_id = submit_comfyui_workflow(workflow)
-        print(f"  Prompt ID: {prompt_id}")
-        print("  Waiting for generation...")
+        logger.info(f"  Prompt ID: {prompt_id}")
+        logger.info("  Waiting for generation...")
         history = wait_comfyui_result(prompt_id)
-        print(f"  Generation complete")
+        logger.info("  Generation complete")
         
         outputs = history.get("outputs", {})
         first_output = next(iter(outputs.values()), None)
@@ -372,8 +387,8 @@ def generate_scene_image(user_input: dict[str, Any]) -> dict[str, Any]:
         else:
             raise ValueError("No image output found")
     except Exception as e:
-        print(f"  ComfyUI error: {e}")
-        print("  Falling back to Mock generation...")
+        logger.error(f"  ComfyUI error: {e}")
+        logger.warning("  Falling back to Mock generation...")
         image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 1000
     
     object_name = f"scenes/scene_{int(time.time())}.png"
@@ -410,17 +425,17 @@ def generate_background_image(user_input: dict[str, Any]) -> dict[str, Any]:
     time_of_day = user_input.get("time", "day")
     weather = user_input.get("weather", "clear")
     
-    print(f"[{datetime.now(timezone.utc).isoformat()}] Generating background: {location}")
+    logger.info(f"Generating background: {location}")
     
     prompt = f"masterpiece, best quality, anime background, {location}, {time_of_day}, {weather}, detailed, cinematic"
     negative_prompt = "low quality, blurry, worst quality"
     
     try:
         workflow = build_comfyui_workflow(prompt, negative_prompt)
-        print(f"  Submitting workflow to ComfyUI: {COMFYUI_API_URL}")
+        logger.info(f"  Submitting workflow to ComfyUI: {COMFYUI_API_URL}")
         prompt_id = submit_comfyui_workflow(workflow)
-        print(f"  Prompt ID: {prompt_id}")
-        print("  Waiting for generation...")
+        logger.info(f"  Prompt ID: {prompt_id}")
+        logger.info("  Waiting for generation...")
         history = wait_comfyui_result(prompt_id)
         
         outputs = history.get("outputs", {})
@@ -431,8 +446,8 @@ def generate_background_image(user_input: dict[str, Any]) -> dict[str, Any]:
         else:
             raise ValueError("No image output found")
     except Exception as e:
-        print(f"  ComfyUI error: {e}")
-        print("  Falling back to Mock generation...")
+        logger.error(f"  ComfyUI error: {e}")
+        logger.warning("  Falling back to Mock generation...")
         image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 1000
     
     object_name = f"backgrounds/{location}_{time_of_day}_{int(time.time())}.png"
@@ -469,12 +484,13 @@ def run_image_job(job: dict[str, Any]) -> dict[str, Any]:
 # === Worker 主循環 ===
 def main() -> None:
     """Image Worker 主循環"""
-    print(f"[{datetime.now(timezone.utc).isoformat()}] Image Worker starting...")
-    print(f"  Worker ID: {WORKER_ID}")
-    print(f"  API Base URL: {API_BASE_URL}")
-    print(f"  ComfyUI API: {COMFYUI_API_URL}")
-    print(f"  S3 Endpoint: {S3_ENDPOINT}")
-    print(f"  Capabilities: {WORKER_CAPABILITIES}")
+    logger.info("Image Worker starting...")
+    logger.info(f"  Worker ID: {WORKER_ID}")
+    logger.info(f"  API Base URL: {API_BASE_URL}")
+    logger.info(f"  ComfyUI API: {COMFYUI_API_URL}")
+    logger.info(f"  S3 Endpoint: {S3_ENDPOINT}")
+    logger.info(f"  SD Model: {SD_MODEL_NAME}")
+    logger.info(f"  Capabilities: {WORKER_CAPABILITIES}")
     
     # 註冊 Worker
     register_worker()
@@ -500,7 +516,7 @@ def main() -> None:
                 continue
             
             current_job_id = job["id"]
-            print(f"[{datetime.now(timezone.utc).isoformat()}] Claimed job: {current_job_id} (type: {job['type']})")
+            logger.info(f"Claimed job: {current_job_id} (type: {job['type']})")
             
             # 更新狀態為 running
             update_job_status(current_job_id, "running", progress=0.0)
@@ -514,11 +530,11 @@ def main() -> None:
             # 標記完成
             update_job_status(current_job_id, "completed", result=result)
             
-            print(f"[{datetime.now(timezone.utc).isoformat()}] Job completed: {current_job_id}")
+            logger.info(f"Job completed: {current_job_id}")
             current_job_id = None
             
         except Exception as e:
-            print(f"[{datetime.now(timezone.utc).isoformat()}] Error: {e}")
+            logger.error(f"Error: {e}", exc_info=True)
             if current_job_id:
                 try:
                     update_job_status(current_job_id, "failed", error=str(e))
