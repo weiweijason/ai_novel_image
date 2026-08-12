@@ -23,7 +23,7 @@ services:
               capabilities: [gpu]
     volumes:
       - ./comfyui/data:/data
-      - ./models/sd:/data/models/checkpoints
+      - ./models/sd:/opt/ComfyUI/models/checkpoints
 
   worker-image:
     build:
