@@ -40,6 +40,7 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_BUCKET: ${S3_BUCKET:-assets}
+      S3_SKIP_SSL_VERIFY: ${S3_SKIP_SSL_VERIFY:-true}
       COMFYUI_API_URL: ${COMFYUI_API_URL:-http://localhost:8188}
       SD_MODEL_PATH: ${SD_MODEL_PATH:-/models/sd/kohaku-v4.1.safetensors}
       IMAGE_WIDTH: ${IMAGE_WIDTH:-1024}
