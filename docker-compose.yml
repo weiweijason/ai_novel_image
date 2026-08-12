@@ -12,6 +12,7 @@ services:
     environment:
       - PORT=8188
       - HOST=0.0.0.0
+      - API_PORT=18188
     deploy:
       resources:
         reservations:
