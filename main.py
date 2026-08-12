@@ -46,8 +46,11 @@ S3_BUCKET = os.getenv("S3_BUCKET", "assets")
 
 # ComfyUI 設定
 COMFYUI_API_URL = os.getenv("COMFYUI_API_URL", "http://localhost:8188")
-SD_MODEL_PATH = os.getenv("SD_MODEL_PATH", "/models/sd/kohaku-v4.1.safetensors")
-SD_MODEL_NAME = os.path.basename(SD_MODEL_PATH)  # kohaku-v4.1.safetensors
+SD_MODEL_PATH = os.getenv("SD_MODEL_PATH", "/data/models/dreamshaper_8.safetensors")
+SD_MODEL_NAME = os.getenv("SD_MODEL_NAME", os.path.basename(SD_MODEL_PATH))  # dreamshaper_8.safetensors
+
+# MinIO SSL 跳過設定
+S3_SKIP_SSL_VERIFY = os.getenv("S3_SKIP_SSL_VERIFY", "false").lower() == "true"
 
 # 影像生成參數
 IMAGE_WIDTH = int(os.getenv("IMAGE_WIDTH", "1024"))
@@ -60,11 +63,26 @@ MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "4"))
 
 # === MinIO 客戶端 ===
 def get_minio_client() -> Minio:
+    """建立 MinIO 客戶端
+    
+    當 S3_SKIP_SSL_VERIFY=true 時，強制使用 HTTP 模式（secure=False）
+    這樣可以繞過 SSL 憑證驗證錯誤
+    """
+    endpoint = S3_ENDPOINT.replace("http://", "").replace("https://", "")
+    
+    # 預設：HTTPS endpoint 使用 secure=True，HTTP 使用 secure=False
+    secure = S3_ENDPOINT.startswith("https")
+    
+    # 如果設定了 S3_SKIP_SSL_VERIFY，強制使用 HTTP 模式
+    if S3_SKIP_SSL_VERIFY:
+        logger.warning("S3_SKIP_SSL_VERIFY=true - Using HTTP mode to skip SSL verification")
+        secure = False
+    
     return Minio(
-        S3_ENDPOINT.replace("http://", "").replace("https://", ""),
+        endpoint,
         access_key=S3_ACCESS_KEY,
         secret_key=S3_SECRET_KEY,
-        secure=S3_ENDPOINT.startswith("https"),
+        secure=secure,
     )
 
 
