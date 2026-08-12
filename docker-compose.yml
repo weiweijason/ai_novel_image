@@ -12,7 +12,8 @@ services:
     environment:
       - PORT=8188
       - HOST=0.0.0.0
-      - API_PORT=18188
+    command: >
+      comfyui --start-server --port 8188 --host 0.0.0.0
     deploy:
       resources:
         reservations:
