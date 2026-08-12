@@ -60,36 +60,11 @@ MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "4"))
 
 # === MinIO 客戶端 ===
 def get_minio_client() -> Minio:
-    endpoint = S3_ENDPOINT.replace("http://", "").replace("https://", "")
-    secure = S3_ENDPOINT.startswith("https")
-    
-    # 如果 S3_SKIP_SSL_VERIFY=true，跳過 SSL 憑證驗證
-    skip_ssl_verify = os.getenv("S3_SKIP_SSL_VERIFY", "false").lower() == "true"
-    
-    http_client = None
-    if skip_ssl_verify:
-        logger.warning("SSL verification disabled for MinIO connection")
-        import ssl
-        import urllib3
-        
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        
-        # 建立不驗證 SSL 憑證的 HTTP 客戶端
-        http_client = urllib3.PoolManager(
-            cert_reqs=ssl.CERT_NONE,
-            retries=urllib3.Retry(
-                total=3,
-                backoff_factor=0.5,
-                redirect=True,
-            )
-        )
-    
     return Minio(
-        endpoint,
+        S3_ENDPOINT.replace("http://", "").replace("https://", ""),
         access_key=S3_ACCESS_KEY,
         secret_key=S3_SECRET_KEY,
-        secure=secure,
-        http=http_client,
+        secure=S3_ENDPOINT.startswith("https"),
     )
 
 
