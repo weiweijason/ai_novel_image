@@ -65,25 +65,43 @@ MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "4"))
 def get_minio_client() -> Minio:
     """建立 MinIO 客戶端
     
-    當 S3_SKIP_SSL_VERIFY=true 時，強制使用 HTTP 模式（secure=False）
-    這樣可以繞過 SSL 憑證驗證錯誤
+    當 S3_SKIP_SSL_VERIFY=true 時，使用 HTTPS 但跳過 SSL 憑證驗證
     """
-    endpoint = S3_ENDPOINT.replace("http://", "").replace("https://", "")
+    # 先移除尾隨斜杠，避免 endpoint 包含 "/"
+    s3_endpoint_clean = S3_ENDPOINT.rstrip("/")
     
-    # 預設：HTTPS endpoint 使用 secure=True，HTTP 使用 secure=False
-    secure = S3_ENDPOINT.startswith("https")
+    # 從 URL 中提取 endpoint（主機:埠）
+    endpoint = s3_endpoint_clean.replace("http://", "").replace("https://", "")
     
-    # 如果設定了 S3_SKIP_SSL_VERIFY，強制使用 HTTP 模式
-    if S3_SKIP_SSL_VERIFY:
-        logger.warning("S3_SKIP_SSL_VERIFY=true - Using HTTP mode to skip SSL verification")
-        secure = False
+    # 預設：根據 URL 協議決定是否使用 SSL
+    secure = s3_endpoint_clean.startswith("https")
     
-    return Minio(
+    logger.info(f"Initializing MinIO client: endpoint={endpoint}, secure={secure}")
+    
+    # 如果設定了 S3_SKIP_SSL_VERIFY，創建跳過 SSL 驗證的會話
+    session = None
+    if S3_SKIP_SSL_VERIFY and secure:
+        logger.warning("S3_SKIP_SSL_VERIFY=true - Disabling SSL certificate verification")
+        import ssl
+        from requests.adapters import HTTPAdapter
+        
+        # 創建不驗證 SSL 的會話
+        session = requests.Session()
+        
+        # 創建跳過 SSL 驗證的適應器
+        adapter = HTTPAdapter()
+        adapter.init_poolmanager(cert_reqs=ssl.CERT_NONE)
+        session.mount("https://", adapter)
+    
+    client = Minio(
         endpoint,
         access_key=S3_ACCESS_KEY,
         secret_key=S3_SECRET_KEY,
+        session=session,
         secure=secure,
     )
+    
+    return client
 
 
 minio_client = get_minio_client()
@@ -180,7 +198,9 @@ def upload_to_minio(image_bytes: bytes, object_name: str, content_type: str = "i
         length=len(image_bytes),
         content_type=content_type,
     )
-    return f"{S3_ENDPOINT}/{S3_BUCKET}/{object_name}"
+    # 確保 URL 格式正確（移除尾隨斜杠後拼接）
+    base_url = S3_ENDPOINT.rstrip("/")
+    return f"{base_url}/{S3_BUCKET}/{object_name}"
 
 
 # === ComfyUI 健康檢查 ===
