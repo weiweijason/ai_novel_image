@@ -78,20 +78,28 @@ def get_minio_client() -> Minio:
     
     logger.info(f"Initializing MinIO client: endpoint={endpoint}, secure={secure}")
     
-    # 如果設定了 S3_SKIP_SSL_VERIFY，全域跳過 SSL 驗證
+    # 如果設定了 S3_SKIP_SSL_VERIFY，在 urllib3 層面跳過 SSL 驗證
     if S3_SKIP_SSL_VERIFY and secure:
-        logger.warning("S3_SKIP_SSL_VERIFY=true - Disabling SSL certificate verification")
+        logger.warning("S3_SKIP_SSL_VERIFY=true - Disabling SSL certificate verification at urllib3 level")
+        import ssl
         import urllib3
+        from urllib3 import HTTPSConnectionPool
         
         # 禁用 urllib3 的 SSL 警告
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
-        # 通過 monkey-patch requests.Session 來跳過 SSL 驗證
-        original_session_init = requests.Session.__init__
-        def patched_session_init(self, *args, **kwargs):
-            original_session_init(self, *args, **kwargs)
-            self.verify = False
-        requests.Session.__init__ = patched_session_init
+        # 創建不驗證 SSL 的上下文
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # Monkey-patch HTTPSConnectionPool 使用自定義 SSL 上下文
+        original_pool_init = HTTPSConnectionPool.__init__
+        def patched_pool_init(self, *args, **kwargs):
+            kwargs['ssl_context'] = ssl_context
+            kwargs['cert_reqs'] = ssl.CERT_NONE
+            original_pool_init(self, *args, **kwargs)
+        HTTPSConnectionPool.__init__ = patched_pool_init
     
     client = Minio(
         endpoint,
