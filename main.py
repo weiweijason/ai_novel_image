@@ -78,8 +78,7 @@ def get_minio_client() -> Minio:
     
     logger.info(f"Initializing MinIO client: endpoint={endpoint}, secure={secure}")
     
-    # 如果設定了 S3_SKIP_SSL_VERIFY，創建跳過 SSL 驗證的會話
-    session = None
+    # 如果設定了 S3_SKIP_SSL_VERIFY，全域跳過 SSL 驗證
     if S3_SKIP_SSL_VERIFY and secure:
         logger.warning("S3_SKIP_SSL_VERIFY=true - Disabling SSL certificate verification")
         import urllib3
@@ -87,15 +86,17 @@ def get_minio_client() -> Minio:
         # 禁用 urllib3 的 SSL 警告
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
-        # 創建跳過 SSL 驗證的會話
-        session = requests.Session()
-        session.verify = False
+        # 通過 monkey-patch requests.Session 來跳過 SSL 驗證
+        original_session_init = requests.Session.__init__
+        def patched_session_init(self, *args, **kwargs):
+            original_session_init(self, *args, **kwargs)
+            self.verify = False
+        requests.Session.__init__ = patched_session_init
     
     client = Minio(
         endpoint,
         access_key=S3_ACCESS_KEY,
         secret_key=S3_SECRET_KEY,
-        session=session,
         secure=secure,
     )
     
