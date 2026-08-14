@@ -109,32 +109,6 @@ def get_minio_client() -> Minio:
         secure=secure,
     )
     
-    # 強制使用 path-style URL（/bucket/object 而不是 bucket.endpoint/object）
-    # 這可以解決 "invalid hostname" 錯誤
-    # MinIO SDK 7.x 使用 _base_url 來構建請求 URL
-    if hasattr(client, '_base_url'):
-        # 修改內部 URL 構建邏輯以使用 path-style
-        original_execute = client._execute
-        
-        def patched_execute(method, bucket_name, object_name=None, **kwargs):
-            # 強制使用 path-style URL
-            if hasattr(client, '_url_open'):
-                original_url_open = client._url_open
-                
-                def patched_url_open(method, url, **kwargs):
-                    # 修改 URL 為 path-style
-                    if bucket_name and f"/{bucket_name}/" not in url:
-                        # 將 bucket 從 hostname 移到 path
-                        url = url.replace(f"{bucket_name}.", "")
-                        url = url.replace(f"/{object_name or ''}", f"/{bucket_name}/{object_name or ''}")
-                    return original_url_open(method, url, **kwargs)
-                
-                client._url_open = patched_url_open
-            
-            return original_execute(method, bucket_name, object_name, **kwargs)
-        
-        client._execute = patched_execute
-    
     logger.info(f"MinIO client created: {endpoint} (secure={secure})")
     
     return client
