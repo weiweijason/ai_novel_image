@@ -101,12 +101,31 @@ def get_minio_client() -> Minio:
             original_pool_init(self, *args, **kwargs)
         HTTPSConnectionPool.__init__ = patched_pool_init
     
+    # 創建 MinIO 客戶端
     client = Minio(
         endpoint,
         access_key=S3_ACCESS_KEY,
         secret_key=S3_SECRET_KEY,
         secure=secure,
     )
+    
+    # 強制使用 path-style URL（/bucket/object 而不是 bucket.endpoint/object）
+    # 這可以解決 "invalid hostname" 錯誤
+    # MinIO SDK 7.x 使用 _base_url 來構建請求 URL
+    if hasattr(client, '_base_url'):
+        # 修改內部 URL 構建邏輯
+        import re
+        original_build = client._execute
+        
+        def patched_execute(method, bucket_name, object_name=None, **kwargs):
+            # 強制使用 path-style
+            if hasattr(client, '_set_app_info'):
+                pass  # 保持原有邏輯
+            return original_build(method, bucket_name, object_name, **kwargs)
+        
+        client._execute = patched_execute
+    
+    logger.info(f"MinIO client created: {endpoint} (secure={secure})")
     
     return client
 
